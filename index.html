@@ -23,13 +23,14 @@
         <button id="open-audio" type="button">Open Audio</button>
         <button id="remove-audio" type="button" disabled>Remove Audio</button>
         <button id="analyze" type="button" disabled>Analyze</button>
-        <span id="status" role="status" aria-live="polite">Phase 4: Silence detection ready</span>
+        <span id="status" role="status" aria-live="polite">Phase 5: Candidate cleanup ready</span>
       </div>
 
       <div class="analysis-info" id="analysis-info">
         <span>DETECTOR</span>
         <strong>FFmpeg-style Silence · -45 dBFS · min 0.35 s</strong>
-        <span id="candidate-count">Candidates: —</span>
+        <span class="cleanup-label">Cleanup · edge 20 s · cluster 20 s</span>
+        <span id="candidate-count">Raw: — · Selected: —</span>
       </div>
 
       <section class="audio-info" id="audio-info" aria-label="Audio file information" hidden>
@@ -47,6 +48,27 @@
           <span>Open Audio → Waveform → Detect Candidate → Marker</span>
         </div>
       </div>
+
+      <section class="candidate-diagnostics" id="candidate-diagnostics" hidden>
+        <div class="diagnostics-head">
+          <strong>Candidate Diagnostics</strong>
+          <span>Raw detector output → cleanup decision</span>
+        </div>
+        <div class="diagnostics-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Time</th>
+                <th>Silence</th>
+                <th>Decision</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="candidate-diagnostics-body"></tbody>
+          </table>
+        </div>
+      </section>
 
       <div class="controls">
         <button type="button" disabled>Play / Pause</button>

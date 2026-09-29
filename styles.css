@@ -13,3 +13,19 @@
 .analysis-info strong{color:#c8cfcd;font-size:12px;font-weight:650}
 #candidate-count{margin-left:auto;color:#f0a44b;font-weight:700}
 @media(max-width:640px){.analysis-info{align-items:flex-start;flex-wrap:wrap}.analysis-info strong{width:100%}#candidate-count{margin-left:0}}
+
+.cleanup-label{color:#7f8986;font-size:11px}
+.candidate-diagnostics{border-top:1px solid var(--line);background:#0f1315}
+.diagnostics-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.diagnostics-head strong{color:var(--text);font-size:13px}
+.diagnostics-head span{color:var(--muted);font-size:11px}
+.diagnostics-table-wrap{overflow:auto;max-height:260px}
+.candidate-diagnostics table{width:100%;border-collapse:collapse;font-size:12px}
+.candidate-diagnostics th,.candidate-diagnostics td{padding:9px 12px;border-bottom:1px solid #242a2d;text-align:left;white-space:nowrap}
+.candidate-diagnostics th{position:sticky;top:0;background:#14191b;color:#9da6a3;font-size:10px;letter-spacing:.08em;z-index:1}
+.candidate-diagnostics tr.selected td{background:rgba(240,164,75,.045)}
+.candidate-diagnostics tr.rejected td{color:#7f8986}
+.decision-badge{display:inline-block;padding:3px 6px;border:1px solid;border-radius:2px;font-size:9px;font-weight:800;letter-spacing:.08em}
+.decision-badge.selected{color:#f0a44b;border-color:#76552f;background:rgba(240,164,75,.07)}
+.decision-badge.rejected{color:#7f8986;border-color:#3a4245;background:#15191b}
+@media(max-width:640px){.cleanup-label{width:100%}.diagnostics-head{align-items:flex-start;flex-direction:column;gap:4px}.candidate-diagnostics th,.candidate-diagnostics td{padding:8px 10px}}

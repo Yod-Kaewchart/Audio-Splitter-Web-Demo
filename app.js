@@ -10,12 +10,18 @@ const waveformPanel = document.querySelector("#waveform-panel");
 const waveformCanvas = document.querySelector("#waveform-canvas");
 const waveformEmpty = document.querySelector("#waveform-empty");
 const candidateCountEl = document.querySelector("#candidate-count");
+const diagnosticsSection = document.querySelector("#candidate-diagnostics");
+const diagnosticsBody = document.querySelector("#candidate-diagnostics-body");
 
 const DETECTION_CONFIG = Object.freeze({
   thresholdDb: -45,
   minSilenceSeconds: 0.35,
   windowSeconds: 0.02,
-  edgeGuardSeconds: 2,
+});
+
+const CLEANUP_CONFIG = Object.freeze({
+  edgeGuardSeconds: 20,
+  clusterSeconds: 20,
 });
 
 const fields = {
@@ -29,7 +35,9 @@ const fields = {
 let audioContext = null;
 let decodedAudio = null;
 let waveformPeaks = null;
-let candidates = [];
+let rawCandidates = [];
+let selectedCandidates = [];
+let candidateDiagnostics = [];
 
 openButton.addEventListener("click", () => fileInput.click());
 removeButton.addEventListener("click", removeAudio);
@@ -43,8 +51,12 @@ fileInput.addEventListener("change", async () => {
   openButton.disabled = true;
   removeButton.disabled = true;
   analyzeButton.disabled = true;
-  candidates = [];
-  candidateCountEl.textContent = "Candidates: —";
+  rawCandidates = [];
+  selectedCandidates = [];
+  candidateDiagnostics = [];
+  candidateCountEl.textContent = "Raw: — · Selected: —";
+  diagnosticsSection.hidden = true;
+  diagnosticsBody.replaceChildren();
   clearWaveform();
 
   try {
@@ -88,24 +100,47 @@ async function analyzeAudio() {
   openButton.disabled = true;
   removeButton.disabled = true;
   analyzeButton.disabled = true;
-  candidates = [];
-  candidateCountEl.textContent = "Candidates: analyzing…";
+  rawCandidates = [];
+  selectedCandidates = [];
+  candidateDiagnostics = [];
+  candidateCountEl.textContent = "Raw: analyzing… · Selected: —";
+  diagnosticsSection.hidden = true;
+  diagnosticsBody.replaceChildren();
   renderWaveform();
 
   try {
     setStatus("Analyzing silence locally… 0%");
-    candidates = await detectSilenceCandidates(decodedAudio, DETECTION_CONFIG, (progress) => {
-      setStatus(`Analyzing silence locally… ${Math.round(progress * 100)}%`);
-    });
+    rawCandidates = await detectSilenceCandidates(
+      decodedAudio,
+      DETECTION_CONFIG,
+      (progress) => {
+        setStatus(`Analyzing silence locally… ${Math.round(progress * 100)}%`);
+      },
+    );
 
-    candidateCountEl.textContent = `Candidates: ${candidates.length}`;
+    const cleanup = cleanupCandidates(
+      rawCandidates,
+      decodedAudio.duration,
+      CLEANUP_CONFIG,
+    );
+    selectedCandidates = cleanup.selected;
+    candidateDiagnostics = cleanup.diagnostics;
+
+    candidateCountEl.textContent =
+      `Raw: ${rawCandidates.length} · Selected: ${selectedCandidates.length}`;
+    renderCandidateDiagnostics();
     renderWaveform();
+
     setStatus(
-      `Analyze complete · ${candidates.length} candidate(s) · ${DETECTION_CONFIG.thresholdDb} dBFS / ${DETECTION_CONFIG.minSilenceSeconds.toFixed(2)} s`,
+      `Analyze complete · Raw ${rawCandidates.length} → Selected ${selectedCandidates.length} · ${DETECTION_CONFIG.thresholdDb} dBFS / ${DETECTION_CONFIG.minSilenceSeconds.toFixed(2)} s`,
     );
   } catch (error) {
-    candidates = [];
-    candidateCountEl.textContent = "Candidates: error";
+    rawCandidates = [];
+    selectedCandidates = [];
+    candidateDiagnostics = [];
+    candidateCountEl.textContent = "Raw: error · Selected: —";
+    diagnosticsSection.hidden = true;
+    diagnosticsBody.replaceChildren();
     renderWaveform();
     setStatus("Analyze failed");
     console.error("Silence analysis failed:", error);
@@ -184,28 +219,133 @@ async function detectSilenceCandidates(audioBuffer, config, onProgress) {
 
   onProgress?.(1);
 
-  return regions
-    .map((region) => ({
-      time: (region.start + region.end) / 2,
-      start: region.start,
-      end: region.end,
-      duration: region.end - region.start,
-    }))
-    .filter(
-      (candidate) =>
-        candidate.time >= config.edgeGuardSeconds &&
-        candidate.time <= audioBuffer.duration - config.edgeGuardSeconds,
-    );
+  return regions.map((region, index) => ({
+    id: index + 1,
+    time: (region.start + region.end) / 2,
+    start: region.start,
+    end: region.end,
+    duration: region.end - region.start,
+  }));
+}
+
+function cleanupCandidates(raw, audioDuration, config) {
+  const diagnostics = raw.map((candidate) => ({
+    ...candidate,
+    decision: "pending",
+    reason: "",
+  }));
+
+  const eligible = [];
+  for (const item of diagnostics) {
+    const fromStart = item.time;
+    const fromEnd = audioDuration - item.time;
+
+    if (
+      fromStart < config.edgeGuardSeconds ||
+      fromEnd < config.edgeGuardSeconds
+    ) {
+      item.decision = "rejected";
+      item.reason = `Edge guard < ${config.edgeGuardSeconds}s`;
+    } else {
+      eligible.push(item);
+    }
+  }
+
+  const clusters = [];
+  for (const item of eligible) {
+    const current = clusters.at(-1);
+    if (
+      current &&
+      item.time - current.at(-1).time <= config.clusterSeconds
+    ) {
+      current.push(item);
+    } else {
+      clusters.push([item]);
+    }
+  }
+
+  const selected = [];
+  for (const cluster of clusters) {
+    let best = cluster[0];
+    for (const item of cluster.slice(1)) {
+      if (
+        item.duration > best.duration ||
+        (item.duration === best.duration && item.time < best.time)
+      ) {
+        best = item;
+      }
+    }
+
+    best.decision = "selected";
+    best.reason =
+      cluster.length === 1
+        ? "Passed cleanup"
+        : `Longest silence in ${cluster.length}-candidate cluster`;
+    selected.push(best);
+
+    for (const item of cluster) {
+      if (item === best) continue;
+      item.decision = "rejected";
+      item.reason = `Clustered within ${config.clusterSeconds}s of #${best.id}`;
+    }
+  }
+
+  return {
+    selected: selected.map(({ id, time, start, end, duration }) => ({
+      id,
+      time,
+      start,
+      end,
+      duration,
+    })),
+    diagnostics,
+  };
+}
+
+function renderCandidateDiagnostics() {
+  diagnosticsBody.replaceChildren();
+
+  for (const item of candidateDiagnostics) {
+    const row = document.createElement("tr");
+    row.className = item.decision;
+
+    appendDiagnosticCell(row, String(item.id));
+    appendDiagnosticCell(row, formatTimePrecise(item.time));
+    appendDiagnosticCell(row, `${item.duration.toFixed(2)} s`);
+
+    const decisionCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `decision-badge ${item.decision}`;
+    badge.textContent =
+      item.decision === "selected" ? "SELECTED" : "REJECTED";
+    decisionCell.appendChild(badge);
+    row.appendChild(decisionCell);
+
+    appendDiagnosticCell(row, item.reason);
+    diagnosticsBody.appendChild(row);
+  }
+
+  diagnosticsSection.hidden = candidateDiagnostics.length === 0;
+}
+
+function appendDiagnosticCell(row, text) {
+  const cell = document.createElement("td");
+  cell.textContent = text;
+  row.appendChild(cell);
 }
 
 function removeAudio() {
   decodedAudio = null;
   waveformPeaks = null;
-  candidates = [];
+  rawCandidates = [];
+  selectedCandidates = [];
+  candidateDiagnostics = [];
   fileInput.value = "";
   analyzeButton.disabled = true;
   removeButton.disabled = true;
-  candidateCountEl.textContent = "Candidates: —";
+  candidateCountEl.textContent = "Raw: — · Selected: —";
+  diagnosticsSection.hidden = true;
+  diagnosticsBody.replaceChildren();
 
   fields.name.textContent = "—";
   fields.size.textContent = "—";
@@ -326,14 +466,34 @@ function renderWaveform() {
 }
 
 function drawCandidates(ctx, width, drawHeight, duration) {
-  if (!duration || candidates.length === 0) return;
+  if (!duration || rawCandidates.length === 0) return;
+
+  const selectedIds = new Set(selectedCandidates.map((candidate) => candidate.id));
+
+  ctx.save();
+  ctx.strokeStyle = "#76552f";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.globalAlpha = 0.7;
+
+  for (const candidate of rawCandidates) {
+    if (selectedIds.has(candidate.id)) continue;
+    const x = Math.max(0, Math.min(width, (candidate.time / duration) * width));
+
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, drawHeight);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 
   ctx.save();
   ctx.strokeStyle = "#f0a44b";
   ctx.fillStyle = "#f0a44b";
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.6;
 
-  for (const candidate of candidates) {
+  for (const candidate of selectedCandidates) {
     const x = Math.max(0, Math.min(width, (candidate.time / duration) * width));
 
     ctx.beginPath();
@@ -398,6 +558,13 @@ function formatBytes(bytes) {
 
   const digits = value >= 10 || unit === 0 ? 0 : 1;
   return `${value.toFixed(digits)} ${units[unit]}`;
+}
+
+function formatTimePrecise(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds - minutes * 60;
+  return `${minutes}:${secs.toFixed(2).padStart(5, "0")}`;
 }
 
 function formatDuration(seconds) {
