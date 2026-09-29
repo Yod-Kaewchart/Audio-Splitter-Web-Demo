@@ -2,6 +2,7 @@
 
 const fileInput = document.querySelector("#audio-file");
 const openButton = document.querySelector("#open-audio");
+const removeButton = document.querySelector("#remove-audio");
 const analyzeButton = document.querySelector("#analyze");
 const statusEl = document.querySelector("#status");
 const audioInfo = document.querySelector("#audio-info");
@@ -22,6 +23,7 @@ let decodedAudio = null;
 let waveformPeaks = null;
 
 openButton.addEventListener("click", () => fileInput.click());
+removeButton.addEventListener("click", removeAudio);
 
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0];
@@ -29,6 +31,7 @@ fileInput.addEventListener("change", async () => {
 
   setStatus("Reading local audio…");
   openButton.disabled = true;
+  removeButton.disabled = true;
   analyzeButton.disabled = true;
   clearWaveform();
 
@@ -50,6 +53,7 @@ fileInput.addEventListener("change", async () => {
     waveformPeaks = buildWaveformPeaks(decodedAudio, 2400);
     waveformEmpty.hidden = true;
     renderWaveform();
+    removeButton.disabled = false;
 
     setStatus("Waveform ready · Local only · No upload · No API");
   } catch (error) {
@@ -64,6 +68,24 @@ fileInput.addEventListener("change", async () => {
     fileInput.value = "";
   }
 });
+
+function removeAudio() {
+  decodedAudio = null;
+  waveformPeaks = null;
+  fileInput.value = "";
+  analyzeButton.disabled = true;
+  removeButton.disabled = true;
+
+  fields.name.textContent = "—";
+  fields.size.textContent = "—";
+  fields.duration.textContent = "—";
+  fields.sampleRate.textContent = "—";
+  fields.channels.textContent = "—";
+  audioInfo.hidden = true;
+
+  clearWaveform();
+  setStatus("Audio removed · Ready to open another file");
+}
 
 const resizeObserver = new ResizeObserver(() => {
   if (waveformPeaks) renderWaveform();
