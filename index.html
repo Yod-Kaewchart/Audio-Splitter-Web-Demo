@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d0f">
+  <meta name="description" content="Audio Splitter Web Demo — local audio processing sandbox. No API.">
+  <title>Audio Splitter Web Demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">AUDIO TECH LAB / EXPERIMENTAL WEB TOOL</p>
+      <h1>Audio Album<br><span>Splitter Web Demo</span></h1>
+      <p class="lead">Sandbox สำหรับทดสอบการแยก Track ใน Browser แบบ Local Processing โดยไม่ใช้ API</p>
+      <p class="privacy">LOCAL MODE · NO API · AUDIO STAYS IN YOUR BROWSER</p>
+    </header>
+
+    <section class="workspace" aria-label="Audio splitter workspace">
+      <div class="toolbar">
+        <button id="open-audio" type="button" disabled>Open Audio</button>
+        <button id="analyze" type="button" disabled>Analyze</button>
+        <span id="status">Phase 1: Project scaffold</span>
+      </div>
+
+      <div class="waveform-placeholder" aria-label="Waveform placeholder">
+        <strong>Waveform</strong>
+        <span>Open Audio → Waveform → Detect Candidate → Marker</span>
+      </div>
+
+      <div class="controls">
+        <button type="button" disabled>Play / Pause</button>
+        <button type="button" disabled>Add Marker</button>
+        <button type="button" disabled>Delete Marker</button>
+        <button type="button" disabled>Move Marker</button>
+      </div>
+    </section>
+
+    <footer>Audio Tech Lab · Web Demo Sandbox</footer>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>
