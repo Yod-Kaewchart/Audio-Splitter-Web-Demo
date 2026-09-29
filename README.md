@@ -24,6 +24,6 @@ Later phases may add Track List, Repeat, Previous / Next, diagnostics, and expor
 
 ## Current status
 
-Phase 2 — Open Audio is implemented with the browser File API and Web Audio decoding.
+Phase 3 — Open Audio and local waveform rendering are implemented.
 
-The demo currently shows local file name, size, duration, sample rate, and channel count. Waveform, detection, markers, playback, and export are not implemented yet.
+The demo reads audio with the browser File API and Web Audio API, shows file metadata, builds lightweight downsampled waveform peaks locally, and renders them on a responsive canvas. Detection, markers, playback, and export are not implemented yet.

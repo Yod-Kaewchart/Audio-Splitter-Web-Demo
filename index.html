@@ -22,7 +22,7 @@
         <input id="audio-file" type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.aac,.ogg" hidden>
         <button id="open-audio" type="button">Open Audio</button>
         <button id="analyze" type="button" disabled>Analyze</button>
-        <span id="status" role="status" aria-live="polite">Phase 2: Open Audio ready</span>
+        <span id="status" role="status" aria-live="polite">Phase 3: Waveform ready</span>
       </div>
 
       <section class="audio-info" id="audio-info" aria-label="Audio file information" hidden>
@@ -33,9 +33,12 @@
         <div><span>CHANNELS</span><strong id="channels">—</strong></div>
       </section>
 
-      <div class="waveform-placeholder" aria-label="Waveform placeholder">
-        <strong>Waveform</strong>
-        <span>Open Audio → Waveform → Detect Candidate → Marker</span>
+      <div class="waveform-panel" id="waveform-panel" aria-label="Audio waveform">
+        <canvas id="waveform-canvas"></canvas>
+        <div class="waveform-empty" id="waveform-empty">
+          <strong>Waveform</strong>
+          <span>Open Audio → Waveform → Detect Candidate → Marker</span>
+        </div>
       </div>
 
       <div class="controls">
