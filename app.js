@@ -126,8 +126,8 @@ async function analyzeAudio() {
   analyzeButton.disabled = true;
   analyzeButton.textContent =
     analyzeRunCount === 0
-      ? "Analyzing…"
-      : `Re-analyzing… (${analyzeRunCount})`;
+      ? "Analyzing 1/2…"
+      : `Re-analyzing 1/2… (${analyzeRunCount})`;
   rawCandidates = [];
   selectedCandidates = [];
   finalCandidates = [];
@@ -141,49 +141,43 @@ async function analyzeAudio() {
   renderWaveform();
 
   try {
-    setStatus("Analyzing silence locally… 0%");
-    rawCandidates = await detectSilenceCandidates(
-      decodedAudio,
-      DETECTION_CONFIG,
-      (progress) => {
-        setStatus(`Analyzing silence locally… ${Math.round(progress * 100)}%`);
-      },
-    );
+    let lastResult = null;
 
-    const cleanup = cleanupCandidates(
-      rawCandidates,
-      decodedAudio.duration,
-      CLEANUP_CONFIG,
-    );
-    selectedCandidates = cleanup.selected;
-    candidateDiagnostics = cleanup.diagnostics;
+    for (let pass = 1; pass <= 2; pass += 1) {
+      analyzeButton.textContent =
+        analyzeRunCount === 0
+          ? `Analyzing ${pass}/2…`
+          : `Re-analyzing ${pass}/2… (${analyzeRunCount})`;
 
-    candidateCountEl.textContent =
-      `Raw: ${rawCandidates.length} · Cleanup: ${selectedCandidates.length} · Final: refining…`;
-    renderCandidateDiagnostics();
-    renderWaveform();
+      lastResult = await runAnalysisPass(pass, 2);
+      analyzeRunCount += 1;
 
-    setStatus("Refining boundaries locally…");
-    const refinement = await refineBoundaries(
-      decodedAudio,
-      selectedCandidates,
-      REFINEMENT_CONFIG,
-    );
-    finalCandidates = refinement.final;
-    refinementDiagnostics = refinement.diagnostics;
+      if (pass === 1) {
+        setStatus(
+          `Pass 1/2 complete · starting pass 2/2 · Total runs ${analyzeRunCount}`,
+        );
+        await nextFrame();
+      }
+    }
+
+    rawCandidates = lastResult.raw;
+    selectedCandidates = lastResult.cleanup.selected;
+    candidateDiagnostics = lastResult.cleanup.diagnostics;
+    finalCandidates = lastResult.refinement.final;
+    refinementDiagnostics = lastResult.refinement.diagnostics;
 
     candidateCountEl.textContent =
       `Raw: ${rawCandidates.length} · Cleanup: ${selectedCandidates.length} · Final: ${finalCandidates.length}`;
+    renderCandidateDiagnostics();
     renderRefinementDiagnostics();
     renderWaveform();
 
     const moved = refinementDiagnostics.filter(
       (item) => item.action === "fallback",
     ).length;
-    analyzeRunCount += 1;
     updateAnalyzeButton();
     setStatus(
-      `Analyze #${analyzeRunCount} complete · Raw ${rawCandidates.length} → Cleanup ${selectedCandidates.length} → Final ${finalCandidates.length} · Refined ${moved}`,
+      `Double-pass complete · Runs ${analyzeRunCount - 1} & ${analyzeRunCount} · Raw ${rawCandidates.length} → Cleanup ${selectedCandidates.length} → Final ${finalCandidates.length} · Refined ${moved}`,
     );
   } catch (error) {
     rawCandidates = [];
@@ -205,6 +199,41 @@ async function analyzeAudio() {
     analyzeButton.disabled = false;
     updateAnalyzeButton();
   }
+}
+
+async function runAnalysisPass(pass, totalPasses) {
+  setStatus(`Pass ${pass}/${totalPasses} · Detecting silence… 0%`);
+
+  const raw = await detectSilenceCandidates(
+    decodedAudio,
+    DETECTION_CONFIG,
+    (progress) => {
+      setStatus(
+        `Pass ${pass}/${totalPasses} · Detecting silence… ${Math.round(progress * 100)}%`,
+      );
+    },
+  );
+
+  const cleanup = cleanupCandidates(
+    raw,
+    decodedAudio.duration,
+    CLEANUP_CONFIG,
+  );
+
+  candidateCountEl.textContent =
+    `Pass ${pass}/${totalPasses} · Raw: ${raw.length} · Cleanup: ${cleanup.selected.length} · Final: refining…`;
+
+  setStatus(`Pass ${pass}/${totalPasses} · Refining boundaries…`);
+  const refinement = await refineBoundaries(
+    decodedAudio,
+    cleanup.selected,
+    REFINEMENT_CONFIG,
+  );
+
+  candidateCountEl.textContent =
+    `Pass ${pass}/${totalPasses} · Raw: ${raw.length} · Cleanup: ${cleanup.selected.length} · Final: ${refinement.final.length}`;
+
+  return { raw, cleanup, refinement };
 }
 
 function updateAnalyzeButton() {
