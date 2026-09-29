@@ -24,4 +24,6 @@ Later phases may add Track List, Repeat, Previous / Next, diagnostics, and expor
 
 ## Current status
 
-Phase 1 — project scaffold only. No audio processing is implemented yet.
+Phase 2 — Open Audio is implemented with the browser File API and Web Audio decoding.
+
+The demo currently shows local file name, size, duration, sample rate, and channel count. Waveform, detection, markers, playback, and export are not implemented yet.
