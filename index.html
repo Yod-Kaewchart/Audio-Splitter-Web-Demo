@@ -23,7 +23,13 @@
         <button id="open-audio" type="button">Open Audio</button>
         <button id="remove-audio" type="button" disabled>Remove Audio</button>
         <button id="analyze" type="button" disabled>Analyze</button>
-        <span id="status" role="status" aria-live="polite">Phase 3: Waveform ready</span>
+        <span id="status" role="status" aria-live="polite">Phase 4: Silence detection ready</span>
+      </div>
+
+      <div class="analysis-info" id="analysis-info">
+        <span>DETECTOR</span>
+        <strong>FFmpeg-style Silence · -45 dBFS · min 0.35 s</strong>
+        <span id="candidate-count">Candidates: —</span>
       </div>
 
       <section class="audio-info" id="audio-info" aria-label="Audio file information" hidden>

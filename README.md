@@ -26,4 +26,6 @@ Later phases may add Track List, Repeat, Previous / Next, diagnostics, and expor
 
 Phase 3 — Open Audio and local waveform rendering are implemented.
 
-The demo reads audio with the browser File API and Web Audio API, shows file metadata, builds lightweight downsampled waveform peaks locally, renders them on a responsive canvas, and can remove the loaded audio without reloading the page. Detection, markers, playback, and export are not implemented yet.
+The demo reads audio with the browser File API and Web Audio API, shows file metadata, builds lightweight downsampled waveform peaks locally, renders them on a responsive canvas, and can remove the loaded audio without reloading the page.
+
+A browser-native FFmpeg-style silence detector is now available through Analyze. The initial baseline uses -45 dBFS, a 0.35 s minimum silence duration, and draws detected split candidates as orange lines on the waveform. Markers, playback, and export are not implemented yet.

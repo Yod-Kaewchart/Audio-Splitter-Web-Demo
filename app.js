@@ -9,6 +9,14 @@ const audioInfo = document.querySelector("#audio-info");
 const waveformPanel = document.querySelector("#waveform-panel");
 const waveformCanvas = document.querySelector("#waveform-canvas");
 const waveformEmpty = document.querySelector("#waveform-empty");
+const candidateCountEl = document.querySelector("#candidate-count");
+
+const DETECTION_CONFIG = Object.freeze({
+  thresholdDb: -45,
+  minSilenceSeconds: 0.35,
+  windowSeconds: 0.02,
+  edgeGuardSeconds: 2,
+});
 
 const fields = {
   name: document.querySelector("#file-name"),
@@ -21,9 +29,11 @@ const fields = {
 let audioContext = null;
 let decodedAudio = null;
 let waveformPeaks = null;
+let candidates = [];
 
 openButton.addEventListener("click", () => fileInput.click());
 removeButton.addEventListener("click", removeAudio);
+analyzeButton.addEventListener("click", analyzeAudio);
 
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0];
@@ -33,6 +43,8 @@ fileInput.addEventListener("change", async () => {
   openButton.disabled = true;
   removeButton.disabled = true;
   analyzeButton.disabled = true;
+  candidates = [];
+  candidateCountEl.textContent = "Candidates: —";
   clearWaveform();
 
   try {
@@ -54,6 +66,7 @@ fileInput.addEventListener("change", async () => {
     waveformEmpty.hidden = true;
     renderWaveform();
     removeButton.disabled = false;
+    analyzeButton.disabled = false;
 
     setStatus("Waveform ready · Local only · No upload · No API");
   } catch (error) {
@@ -69,12 +82,130 @@ fileInput.addEventListener("change", async () => {
   }
 });
 
+async function analyzeAudio() {
+  if (!decodedAudio) return;
+
+  openButton.disabled = true;
+  removeButton.disabled = true;
+  analyzeButton.disabled = true;
+  candidates = [];
+  candidateCountEl.textContent = "Candidates: analyzing…";
+  renderWaveform();
+
+  try {
+    setStatus("Analyzing silence locally… 0%");
+    candidates = await detectSilenceCandidates(decodedAudio, DETECTION_CONFIG, (progress) => {
+      setStatus(`Analyzing silence locally… ${Math.round(progress * 100)}%`);
+    });
+
+    candidateCountEl.textContent = `Candidates: ${candidates.length}`;
+    renderWaveform();
+    setStatus(
+      `Analyze complete · ${candidates.length} candidate(s) · ${DETECTION_CONFIG.thresholdDb} dBFS / ${DETECTION_CONFIG.minSilenceSeconds.toFixed(2)} s`,
+    );
+  } catch (error) {
+    candidates = [];
+    candidateCountEl.textContent = "Candidates: error";
+    renderWaveform();
+    setStatus("Analyze failed");
+    console.error("Silence analysis failed:", error);
+  } finally {
+    openButton.disabled = false;
+    removeButton.disabled = false;
+    analyzeButton.disabled = false;
+  }
+}
+
+async function detectSilenceCandidates(audioBuffer, config, onProgress) {
+  const sampleRate = audioBuffer.sampleRate;
+  const windowFrames = Math.max(1, Math.round(config.windowSeconds * sampleRate));
+  const minSilentWindows = Math.max(
+    1,
+    Math.ceil(config.minSilenceSeconds / config.windowSeconds),
+  );
+  const totalWindows = Math.ceil(audioBuffer.length / windowFrames);
+  const thresholdLinear = Math.pow(10, config.thresholdDb / 20);
+  const channels = Array.from(
+    { length: audioBuffer.numberOfChannels },
+    (_, index) => audioBuffer.getChannelData(index),
+  );
+
+  const regions = [];
+  let silenceStartWindow = null;
+  const batchWindows = 1200;
+
+  for (let windowIndex = 0; windowIndex < totalWindows; windowIndex += 1) {
+    const start = windowIndex * windowFrames;
+    const end = Math.min(audioBuffer.length, start + windowFrames);
+    const span = Math.max(1, end - start);
+    const stride = Math.max(1, Math.floor(span / 128));
+    let sumSquares = 0;
+    let sampleCount = 0;
+
+    for (let sample = start; sample < end; sample += stride) {
+      for (const channel of channels) {
+        const value = channel[sample] ?? 0;
+        sumSquares += value * value;
+        sampleCount += 1;
+      }
+    }
+
+    const rms = sampleCount > 0 ? Math.sqrt(sumSquares / sampleCount) : 0;
+    const isSilent = rms <= thresholdLinear;
+
+    if (isSilent) {
+      if (silenceStartWindow === null) silenceStartWindow = windowIndex;
+    } else if (silenceStartWindow !== null) {
+      const silentWindowCount = windowIndex - silenceStartWindow;
+      if (silentWindowCount >= minSilentWindows) {
+        regions.push({
+          start: silenceStartWindow * config.windowSeconds,
+          end: Math.min(windowIndex * config.windowSeconds, audioBuffer.duration),
+        });
+      }
+      silenceStartWindow = null;
+    }
+
+    if (windowIndex % batchWindows === 0) {
+      onProgress?.(windowIndex / totalWindows);
+      await nextFrame();
+    }
+  }
+
+  if (silenceStartWindow !== null) {
+    const silentWindowCount = totalWindows - silenceStartWindow;
+    if (silentWindowCount >= minSilentWindows) {
+      regions.push({
+        start: silenceStartWindow * config.windowSeconds,
+        end: audioBuffer.duration,
+      });
+    }
+  }
+
+  onProgress?.(1);
+
+  return regions
+    .map((region) => ({
+      time: (region.start + region.end) / 2,
+      start: region.start,
+      end: region.end,
+      duration: region.end - region.start,
+    }))
+    .filter(
+      (candidate) =>
+        candidate.time >= config.edgeGuardSeconds &&
+        candidate.time <= audioBuffer.duration - config.edgeGuardSeconds,
+    );
+}
+
 function removeAudio() {
   decodedAudio = null;
   waveformPeaks = null;
+  candidates = [];
   fileInput.value = "";
   analyzeButton.disabled = true;
   removeButton.disabled = true;
+  candidateCountEl.textContent = "Candidates: —";
 
   fields.name.textContent = "—";
   fields.size.textContent = "—";
@@ -190,7 +321,35 @@ function renderWaveform() {
 
   ctx.stroke();
 
+  drawCandidates(ctx, cssWidth, drawHeight, waveformPeaks.duration);
   drawTimeAxis(ctx, cssWidth, cssHeight, waveformPeaks.duration);
+}
+
+function drawCandidates(ctx, width, drawHeight, duration) {
+  if (!duration || candidates.length === 0) return;
+
+  ctx.save();
+  ctx.strokeStyle = "#f0a44b";
+  ctx.fillStyle = "#f0a44b";
+  ctx.lineWidth = 1.5;
+
+  for (const candidate of candidates) {
+    const x = Math.max(0, Math.min(width, (candidate.time / duration) * width));
+
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, drawHeight);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x - 5, 0);
+    ctx.lineTo(x + 5, 0);
+    ctx.lineTo(x, 8);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 function drawTimeAxis(ctx, width, height, duration) {
