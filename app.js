@@ -55,6 +55,7 @@ let selectedCandidates = [];
 let finalCandidates = [];
 let candidateDiagnostics = [];
 let refinementDiagnostics = [];
+let analyzeRunCount = 0;
 
 openButton.addEventListener("click", () => fileInput.click());
 removeButton.addEventListener("click", removeAudio);
@@ -73,6 +74,8 @@ fileInput.addEventListener("change", async () => {
   finalCandidates = [];
   candidateDiagnostics = [];
   refinementDiagnostics = [];
+  analyzeRunCount = 0;
+  updateAnalyzeButton();
   candidateCountEl.textContent = "Raw: — · Cleanup: — · Final: —";
   diagnosticsSection.hidden = true;
   diagnosticsBody.replaceChildren();
@@ -121,6 +124,10 @@ async function analyzeAudio() {
   openButton.disabled = true;
   removeButton.disabled = true;
   analyzeButton.disabled = true;
+  analyzeButton.textContent =
+    analyzeRunCount === 0
+      ? "Analyzing…"
+      : `Re-analyzing… (${analyzeRunCount})`;
   rawCandidates = [];
   selectedCandidates = [];
   finalCandidates = [];
@@ -173,8 +180,10 @@ async function analyzeAudio() {
     const moved = refinementDiagnostics.filter(
       (item) => item.action === "fallback",
     ).length;
+    analyzeRunCount += 1;
+    updateAnalyzeButton();
     setStatus(
-      `Analyze complete · Raw ${rawCandidates.length} → Cleanup ${selectedCandidates.length} → Final ${finalCandidates.length} · Refined ${moved}`,
+      `Analyze #${analyzeRunCount} complete · Raw ${rawCandidates.length} → Cleanup ${selectedCandidates.length} → Final ${finalCandidates.length} · Refined ${moved}`,
     );
   } catch (error) {
     rawCandidates = [];
@@ -194,7 +203,15 @@ async function analyzeAudio() {
     openButton.disabled = false;
     removeButton.disabled = false;
     analyzeButton.disabled = false;
+    updateAnalyzeButton();
   }
+}
+
+function updateAnalyzeButton() {
+  analyzeButton.textContent =
+    analyzeRunCount === 0
+      ? "Analyze"
+      : `Re-analyze (${analyzeRunCount})`;
 }
 
 async function detectSilenceCandidates(audioBuffer, config, onProgress) {
@@ -725,6 +742,8 @@ function removeAudio() {
   finalCandidates = [];
   candidateDiagnostics = [];
   refinementDiagnostics = [];
+  analyzeRunCount = 0;
+  updateAnalyzeButton();
   fileInput.value = "";
   analyzeButton.disabled = true;
   removeButton.disabled = true;
