@@ -23,14 +23,14 @@
         <button id="open-audio" type="button">Open Audio</button>
         <button id="remove-audio" type="button" disabled>Remove Audio</button>
         <button id="analyze" type="button" disabled>Analyze</button>
-        <span id="status" role="status" aria-live="polite">Step 5C: Boundary refinement ready</span>
+        <span id="status" role="status" aria-live="polite">Pass 1 Primary · Pass 2 Verification ready</span>
       </div>
 
       <div class="analysis-info" id="analysis-info">
         <span>DETECTOR</span>
         <strong>FFmpeg-style Silence · -45 dBFS · min 0.35 s</strong>
-        <span class="cleanup-label">Cleanup · edge 20 s · cluster 20 s</span>
-        <span id="candidate-count">Raw: — · Cleanup: — · Final: —</span>
+        <span class="cleanup-label">Cleanup · edge 20 s · cluster 20 s · Verify long span ≥ 1.65× baseline</span>
+        <span id="candidate-count">Raw: — · Cleanup: — · Final: — · Verified: —</span>
       </div>
 
       <section class="audio-info" id="audio-info" aria-label="Audio file information" hidden>
@@ -87,6 +87,28 @@
               </tr>
             </thead>
             <tbody id="refinement-diagnostics-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="candidate-diagnostics verification-diagnostics" id="verification-diagnostics" hidden>
+        <div class="diagnostics-head">
+          <strong>Verification Diagnostics</strong>
+          <span>Pass 2 · inspect unusually long track spans and fill missed boundaries</span>
+        </div>
+        <div class="diagnostics-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Segment</th>
+                <th>Duration</th>
+                <th>Baseline</th>
+                <th>Action</th>
+                <th>Boundary</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="verification-diagnostics-body"></tbody>
           </table>
         </div>
       </section>

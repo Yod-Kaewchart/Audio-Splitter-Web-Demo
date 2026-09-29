@@ -14,6 +14,8 @@ const diagnosticsSection = document.querySelector("#candidate-diagnostics");
 const diagnosticsBody = document.querySelector("#candidate-diagnostics-body");
 const refinementSection = document.querySelector("#refinement-diagnostics");
 const refinementBody = document.querySelector("#refinement-diagnostics-body");
+const verificationSection = document.querySelector("#verification-diagnostics");
+const verificationBody = document.querySelector("#verification-diagnostics-body");
 
 const DETECTION_CONFIG = Object.freeze({
   thresholdDb: -45,
@@ -39,6 +41,19 @@ const REFINEMENT_CONFIG = Object.freeze({
   proximityPenaltyDb: 12,
 });
 
+const VERIFICATION_CONFIG = Object.freeze({
+  longSegmentRatio: 1.65,
+  minimumLongSegmentSeconds: 180,
+  searchRadiusSeconds: 45,
+  minimumBoundaryMarginSeconds: 30,
+  envelopeWindowSeconds: 0.10,
+  transitionLookSeconds: 5,
+  transitionInnerGapSeconds: 1,
+  transitionMinDb: 7,
+  valleyMaxDb: -20,
+  proximityPenaltyDb: 10,
+});
+
 const fields = {
   name: document.querySelector("#file-name"),
   size: document.querySelector("#file-size"),
@@ -55,6 +70,7 @@ let selectedCandidates = [];
 let finalCandidates = [];
 let candidateDiagnostics = [];
 let refinementDiagnostics = [];
+let verificationDiagnostics = [];
 let analyzeRunCount = 0;
 
 openButton.addEventListener("click", () => fileInput.click());
@@ -74,13 +90,16 @@ fileInput.addEventListener("change", async () => {
   finalCandidates = [];
   candidateDiagnostics = [];
   refinementDiagnostics = [];
+  verificationDiagnostics = [];
   analyzeRunCount = 0;
   updateAnalyzeButton();
-  candidateCountEl.textContent = "Raw: — · Cleanup: — · Final: —";
+  candidateCountEl.textContent = "Raw: — · Cleanup: — · Final: — · Verified: —";
   diagnosticsSection.hidden = true;
   diagnosticsBody.replaceChildren();
   refinementSection.hidden = true;
   refinementBody.replaceChildren();
+  verificationSection.hidden = true;
+  verificationBody.replaceChildren();
   clearWaveform();
 
   try {
@@ -128,56 +147,75 @@ async function analyzeAudio() {
     analyzeRunCount === 0
       ? "Analyzing 1/2…"
       : `Re-analyzing 1/2… (${analyzeRunCount})`;
+
   rawCandidates = [];
   selectedCandidates = [];
   finalCandidates = [];
   candidateDiagnostics = [];
   refinementDiagnostics = [];
-  candidateCountEl.textContent = "Raw: analyzing… · Cleanup: — · Final: —";
+  verificationDiagnostics = [];
+  candidateCountEl.textContent =
+    "Raw: analyzing… · Cleanup: — · Final: — · Verified: —";
   diagnosticsSection.hidden = true;
   diagnosticsBody.replaceChildren();
   refinementSection.hidden = true;
   refinementBody.replaceChildren();
+  verificationSection.hidden = true;
+  verificationBody.replaceChildren();
   renderWaveform();
 
   try {
-    let lastResult = null;
+    const firstRunNumber = analyzeRunCount + 1;
+    const secondRunNumber = analyzeRunCount + 2;
 
-    for (let pass = 1; pass <= 2; pass += 1) {
-      analyzeButton.textContent =
-        analyzeRunCount === 0
-          ? `Analyzing ${pass}/2…`
-          : `Re-analyzing ${pass}/2… (${analyzeRunCount})`;
+    analyzeButton.textContent =
+      analyzeRunCount === 0
+        ? "Analyzing 1/2…"
+        : `Re-analyzing 1/2… (${analyzeRunCount})`;
 
-      lastResult = await runAnalysisPass(pass, 2);
-      analyzeRunCount += 1;
+    const primary = await runPrimaryPass();
+    analyzeRunCount += 1;
 
-      if (pass === 1) {
-        setStatus(
-          `Pass 1/2 complete · starting pass 2/2 · Total runs ${analyzeRunCount}`,
-        );
-        await nextFrame();
-      }
-    }
-
-    rawCandidates = lastResult.raw;
-    selectedCandidates = lastResult.cleanup.selected;
-    candidateDiagnostics = lastResult.cleanup.diagnostics;
-    finalCandidates = lastResult.refinement.final;
-    refinementDiagnostics = lastResult.refinement.diagnostics;
+    rawCandidates = primary.raw;
+    selectedCandidates = primary.cleanup.selected;
+    candidateDiagnostics = primary.cleanup.diagnostics;
+    finalCandidates = primary.refinement.final;
+    refinementDiagnostics = primary.refinement.diagnostics;
 
     candidateCountEl.textContent =
-      `Raw: ${rawCandidates.length} · Cleanup: ${selectedCandidates.length} · Final: ${finalCandidates.length}`;
+      `Raw: ${rawCandidates.length} · Cleanup: ${selectedCandidates.length} · Final: ${finalCandidates.length} · Verified: scanning…`;
     renderCandidateDiagnostics();
     renderRefinementDiagnostics();
+    renderWaveform();
+
+    setStatus(
+      `Pass 1/2 Primary complete · starting Pass 2/2 Verification · Run ${firstRunNumber}`,
+    );
+    analyzeButton.textContent =
+      `Verifying 2/2… (${analyzeRunCount})`;
+    await nextFrame();
+
+    const verification = await runVerificationPass(
+      primary.refinement.final,
+      primary.envelope,
+    );
+    analyzeRunCount += 1;
+
+    finalCandidates = verification.final;
+    verificationDiagnostics = verification.diagnostics;
+
+    candidateCountEl.textContent =
+      `Raw: ${rawCandidates.length} · Cleanup: ${selectedCandidates.length} · Final: ${finalCandidates.length} · Verified: +${verification.added.length}`;
+    renderVerificationDiagnostics();
     renderWaveform();
 
     const moved = refinementDiagnostics.filter(
       (item) => item.action === "fallback",
     ).length;
+
     updateAnalyzeButton();
     setStatus(
-      `Double-pass complete · Runs ${analyzeRunCount - 1} & ${analyzeRunCount} · Raw ${rawCandidates.length} → Cleanup ${selectedCandidates.length} → Final ${finalCandidates.length} · Refined ${moved}`,
+      `Two-stage complete · Runs ${firstRunNumber} & ${secondRunNumber} · Primary Final ${primary.refinement.final.length} → Verified Final ${finalCandidates.length} · Added ${verification.added.length} · Refined ${moved}`,
     );
   } catch (error) {
     rawCandidates = [];
@@ -185,11 +223,15 @@ async function analyzeAudio() {
     finalCandidates = [];
     candidateDiagnostics = [];
     refinementDiagnostics = [];
-    candidateCountEl.textContent = "Raw: error · Cleanup: — · Final: —";
+    verificationDiagnostics = [];
+    candidateCountEl.textContent =
+      "Raw: error · Cleanup: — · Final: — · Verified: —";
     diagnosticsSection.hidden = true;
     diagnosticsBody.replaceChildren();
     refinementSection.hidden = true;
     refinementBody.replaceChildren();
+    verificationSection.hidden = true;
+    verificationBody.replaceChildren();
     renderWaveform();
     setStatus("Analyze failed");
     console.error("Boundary analysis failed:", error);
@@ -201,15 +243,15 @@ async function analyzeAudio() {
   }
 }
 
-async function runAnalysisPass(pass, totalPasses) {
-  setStatus(`Pass ${pass}/${totalPasses} · Detecting silence… 0%`);
+async function runPrimaryPass() {
+  setStatus("Pass 1/2 Primary · Detecting silence… 0%");
 
   const raw = await detectSilenceCandidates(
     decodedAudio,
     DETECTION_CONFIG,
     (progress) => {
       setStatus(
-        `Pass ${pass}/${totalPasses} · Detecting silence… ${Math.round(progress * 100)}%`,
+        `Pass 1/2 Primary · Detecting silence… ${Math.round(progress * 100)}%`,
       );
     },
   );
@@ -221,19 +263,44 @@ async function runAnalysisPass(pass, totalPasses) {
   );
 
   candidateCountEl.textContent =
-    `Pass ${pass}/${totalPasses} · Raw: ${raw.length} · Cleanup: ${cleanup.selected.length} · Final: refining…`;
+    `Pass 1/2 · Raw: ${raw.length} · Cleanup: ${cleanup.selected.length} · Final: refining… · Verified: —`;
 
-  setStatus(`Pass ${pass}/${totalPasses} · Refining boundaries…`);
+  setStatus("Pass 1/2 Primary · Building energy evidence…");
+  const envelope = await buildEnergyEnvelope(
+    decodedAudio,
+    REFINEMENT_CONFIG.envelopeWindowSeconds,
+  );
+
+  setStatus("Pass 1/2 Primary · Refining boundaries…");
   const refinement = await refineBoundaries(
     decodedAudio,
     cleanup.selected,
     REFINEMENT_CONFIG,
+    envelope,
   );
 
   candidateCountEl.textContent =
-    `Pass ${pass}/${totalPasses} · Raw: ${raw.length} · Cleanup: ${cleanup.selected.length} · Final: ${refinement.final.length}`;
+    `Pass 1/2 · Raw: ${raw.length} · Cleanup: ${cleanup.selected.length} · Final: ${refinement.final.length} · Verified: —`;
 
-  return { raw, cleanup, refinement };
+  return { raw, cleanup, refinement, envelope };
+}
+
+async function runVerificationPass(primaryFinal, envelope) {
+  setStatus("Pass 2/2 Verification · Inspecting long track spans…");
+
+  const verification = verifyFinalCandidates(
+    decodedAudio,
+    primaryFinal,
+    envelope,
+    VERIFICATION_CONFIG,
+  );
+
+  setStatus(
+    `Pass 2/2 Verification · Checked ${verification.checkedSegments} long span(s) · Added ${verification.added.length}`,
+  );
+
+  await nextFrame();
+  return verification;
 }
 
 function updateAnalyzeButton() {
@@ -394,15 +461,17 @@ function cleanupCandidates(raw, audioDuration, config) {
   };
 }
 
-async function refineBoundaries(audioBuffer, selected, config) {
+async function refineBoundaries(audioBuffer, selected, config, suppliedEnvelope = null) {
   if (selected.length === 0) {
     return { final: [], diagnostics: [] };
   }
 
-  const envelope = await buildEnergyEnvelope(
-    audioBuffer,
-    config.envelopeWindowSeconds,
-  );
+  const envelope =
+    suppliedEnvelope ||
+    await buildEnergyEnvelope(
+      audioBuffer,
+      config.envelopeWindowSeconds,
+    );
   const final = selected.map((candidate) => ({
     ...candidate,
     source: "silence",
@@ -523,6 +592,142 @@ async function refineBoundaries(audioBuffer, selected, config) {
   }
 
   return { final, diagnostics };
+}
+
+function verifyFinalCandidates(audioBuffer, primaryFinal, envelope, config) {
+  const ordered = [...primaryFinal].sort((a, b) => a.time - b.time);
+  const boundaryTimes = [0, ...ordered.map((candidate) => candidate.time), audioBuffer.duration];
+  const segmentDurations = [];
+
+  for (let index = 0; index < boundaryTimes.length - 1; index += 1) {
+    segmentDurations.push(boundaryTimes[index + 1] - boundaryTimes[index]);
+  }
+
+  const usableDurations = segmentDurations.filter((duration) => duration >= 30);
+  const baseline = median(usableDurations);
+  const longThreshold = Math.max(
+    config.minimumLongSegmentSeconds,
+    baseline * config.longSegmentRatio,
+  );
+
+  const diagnostics = [];
+  const added = [];
+  let checkedSegments = 0;
+
+  if (!Number.isFinite(baseline) || baseline <= 0 || ordered.length < 2) {
+    return {
+      final: ordered,
+      diagnostics: [{
+        segment: "—",
+        duration: audioBuffer.duration,
+        baseline,
+        action: "skip",
+        boundaryTime: null,
+        reason: "Not enough Primary boundaries to estimate normal track spacing",
+      }],
+      added,
+      checkedSegments,
+      baseline,
+    };
+  }
+
+  for (let index = 0; index < boundaryTimes.length - 1; index += 1) {
+    const start = boundaryTimes[index];
+    const end = boundaryTimes[index + 1];
+    const duration = end - start;
+
+    if (duration < longThreshold) continue;
+
+    checkedSegments += 1;
+    const expectedTime = start + baseline;
+    const searchStart = Math.max(
+      start + config.minimumBoundaryMarginSeconds,
+      expectedTime - config.searchRadiusSeconds,
+    );
+    const searchEnd = Math.min(
+      end - config.minimumBoundaryMarginSeconds,
+      expectedTime + config.searchRadiusSeconds,
+    );
+
+    if (!(searchEnd > searchStart)) {
+      diagnostics.push({
+        segment: `${index + 1}`,
+        duration,
+        baseline,
+        action: "pass",
+        boundaryTime: null,
+        reason: "Long span found, but no safe verification search window",
+      });
+      continue;
+    }
+
+    const transition = findFirstSustainedTransition(
+      envelope,
+      searchStart,
+      searchEnd,
+      config,
+    );
+    const valley = transition
+      ? null
+      : findBestEnergyValley(
+          envelope,
+          searchStart,
+          searchEnd,
+          expectedTime,
+          config,
+        );
+
+    const point =
+      transition ||
+      (valley && valley.db <= config.valleyMaxDb
+        ? {
+            time: valley.time,
+            method: "valley",
+            evidenceDb: valley.db,
+          }
+        : null);
+
+    if (
+      point &&
+      point.time - start >= config.minimumBoundaryMarginSeconds &&
+      end - point.time >= config.minimumBoundaryMarginSeconds
+    ) {
+      const candidate = {
+        id: `V${added.length + 1}`,
+        time: point.time,
+        start: point.time,
+        end: point.time,
+        duration: 0,
+        source: "verification",
+        verificationMethod: point.method,
+        evidenceDb: point.evidenceDb,
+      };
+      added.push(candidate);
+      diagnostics.push({
+        segment: `${index + 1}`,
+        duration,
+        baseline,
+        action: "add",
+        boundaryTime: point.time,
+        reason:
+          point.method === "transition"
+            ? `Long span ${duration.toFixed(1)}s > ${longThreshold.toFixed(1)}s · sustained transition ${point.evidenceDb.toFixed(1)} dB`
+            : `Long span ${duration.toFixed(1)}s > ${longThreshold.toFixed(1)}s · energy valley ${point.evidenceDb.toFixed(1)} dBFS`,
+      });
+    } else {
+      diagnostics.push({
+        segment: `${index + 1}`,
+        duration,
+        baseline,
+        action: "pass",
+        boundaryTime: null,
+        reason: `Long span ${duration.toFixed(1)}s checked · no qualified transition or valley`,
+      });
+    }
+  }
+
+  const final = [...ordered, ...added].sort((a, b) => a.time - b.time);
+  return { final, diagnostics, added, checkedSegments, baseline };
 }
 
 async function buildEnergyEnvelope(audioBuffer, windowSeconds) {
@@ -757,6 +962,43 @@ function renderRefinementDiagnostics() {
   refinementSection.hidden = refinementDiagnostics.length === 0;
 }
 
+function renderVerificationDiagnostics() {
+  verificationBody.replaceChildren();
+
+  for (const item of verificationDiagnostics) {
+    const row = document.createElement("tr");
+    row.className = item.action === "add" ? "verified-add" : "verified-pass";
+
+    appendDiagnosticCell(row, item.segment);
+    appendDiagnosticCell(row, formatDurationPrecise(item.duration));
+    appendDiagnosticCell(
+      row,
+      Number.isFinite(item.baseline) ? formatDurationPrecise(item.baseline) : "—",
+    );
+
+    const actionCell = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `decision-badge verify-${item.action}`;
+    badge.textContent =
+      item.action === "add"
+        ? "ADD"
+        : item.action === "skip"
+          ? "SKIP"
+          : "PASS";
+    actionCell.appendChild(badge);
+    row.appendChild(actionCell);
+
+    appendDiagnosticCell(
+      row,
+      item.boundaryTime == null ? "—" : formatTimePrecise(item.boundaryTime),
+    );
+    appendDiagnosticCell(row, item.reason);
+    verificationBody.appendChild(row);
+  }
+
+  verificationSection.hidden = verificationDiagnostics.length === 0;
+}
+
 function appendDiagnosticCell(row, text) {
   const cell = document.createElement("td");
   cell.textContent = text;
@@ -771,16 +1013,20 @@ function removeAudio() {
   finalCandidates = [];
   candidateDiagnostics = [];
   refinementDiagnostics = [];
+  verificationDiagnostics = [];
   analyzeRunCount = 0;
   updateAnalyzeButton();
   fileInput.value = "";
   analyzeButton.disabled = true;
   removeButton.disabled = true;
-  candidateCountEl.textContent = "Raw: — · Cleanup: — · Final: —";
+  candidateCountEl.textContent =
+    "Raw: — · Cleanup: — · Final: — · Verified: —";
   diagnosticsSection.hidden = true;
   diagnosticsBody.replaceChildren();
   refinementSection.hidden = true;
   refinementBody.replaceChildren();
+  verificationSection.hidden = true;
+  verificationBody.replaceChildren();
 
   fields.name.textContent = "—";
   fields.size.textContent = "—";
@@ -957,13 +1203,18 @@ function drawCandidates(ctx, width, drawHeight, duration) {
 
   for (const candidate of displayFinal) {
     const isFallback = candidate.source === "fallback";
-    const color = isFallback ? "#ff7aa8" : "#f0a44b";
+    const isVerification = candidate.source === "verification";
+    const color = isVerification
+      ? "#7fe0a3"
+      : isFallback
+        ? "#ff7aa8"
+        : "#f0a44b";
     const x = Math.max(0, Math.min(width, (candidate.time / duration) * width));
 
     ctx.save();
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = isFallback ? 2 : 1.6;
+    ctx.lineWidth = isVerification ? 2.2 : isFallback ? 2 : 1.6;
 
     ctx.beginPath();
     ctx.moveTo(x + 0.5, 0);
@@ -1033,6 +1284,19 @@ function formatTimePrecise(seconds) {
   const minutes = Math.floor(seconds / 60);
   const secs = seconds - minutes * 60;
   return `${minutes}:${secs.toFixed(2).padStart(5, "0")}`;
+}
+
+function formatDurationPrecise(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds - hours * 3600 - minutes * 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${secs.toFixed(1).padStart(4, "0")}`;
+  }
+
+  return `${minutes}:${secs.toFixed(1).padStart(4, "0")}`;
 }
 
 function formatDuration(seconds) {

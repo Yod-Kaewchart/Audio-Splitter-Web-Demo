@@ -33,3 +33,7 @@
 .refinement-diagnostics tr.refined td{background:rgba(255,122,168,.045)}
 .decision-badge.fallback{color:#ff9cbd;border-color:#7a4055;background:rgba(255,122,168,.08)}
 .decision-badge.keep{color:#b8c1be;border-color:#455054;background:#15191b}
+
+.verification-diagnostics tr.verified-add td{background:rgba(127,224,163,.05)}
+.decision-badge.verify-add{color:#9aefb8;border-color:#3f7452;background:rgba(127,224,163,.09)}
+.decision-badge.verify-pass,.decision-badge.verify-skip{color:#8e9895;border-color:#424b4e;background:#15191b}
