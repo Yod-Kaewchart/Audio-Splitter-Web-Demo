@@ -23,14 +23,14 @@
         <button id="open-audio" type="button">Open Audio</button>
         <button id="remove-audio" type="button" disabled>Remove Audio</button>
         <button id="analyze" type="button" disabled>Analyze</button>
-        <span id="status" role="status" aria-live="polite">Phase 5: Candidate cleanup ready</span>
+        <span id="status" role="status" aria-live="polite">Step 5C: Boundary refinement ready</span>
       </div>
 
       <div class="analysis-info" id="analysis-info">
         <span>DETECTOR</span>
         <strong>FFmpeg-style Silence · -45 dBFS · min 0.35 s</strong>
         <span class="cleanup-label">Cleanup · edge 20 s · cluster 20 s</span>
-        <span id="candidate-count">Raw: — · Selected: —</span>
+        <span id="candidate-count">Raw: — · Cleanup: — · Final: —</span>
       </div>
 
       <section class="audio-info" id="audio-info" aria-label="Audio file information" hidden>
@@ -66,6 +66,27 @@
               </tr>
             </thead>
             <tbody id="candidate-diagnostics-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="candidate-diagnostics refinement-diagnostics" id="refinement-diagnostics" hidden>
+        <div class="diagnostics-head">
+          <strong>Refinement Diagnostics</strong>
+          <span>Track-spacing heuristic + transition-first / valley-second fallback</span>
+        </div>
+        <div class="diagnostics-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Candidate</th>
+                <th>Original</th>
+                <th>Refined</th>
+                <th>Action</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="refinement-diagnostics-body"></tbody>
           </table>
         </div>
       </section>

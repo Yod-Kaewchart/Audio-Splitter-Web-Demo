@@ -29,3 +29,7 @@
 .decision-badge.selected{color:#f0a44b;border-color:#76552f;background:rgba(240,164,75,.07)}
 .decision-badge.rejected{color:#7f8986;border-color:#3a4245;background:#15191b}
 @media(max-width:640px){.cleanup-label{width:100%}.diagnostics-head{align-items:flex-start;flex-direction:column;gap:4px}.candidate-diagnostics th,.candidate-diagnostics td{padding:8px 10px}}
+
+.refinement-diagnostics tr.refined td{background:rgba(255,122,168,.045)}
+.decision-badge.fallback{color:#ff9cbd;border-color:#7a4055;background:rgba(255,122,168,.08)}
+.decision-badge.keep{color:#b8c1be;border-color:#455054;background:#15191b}

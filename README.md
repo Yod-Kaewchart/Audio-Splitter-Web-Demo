@@ -30,4 +30,8 @@ The demo reads audio with the browser File API and Web Audio API, shows file met
 
 A browser-native FFmpeg-style silence detector is available through Analyze. The detector baseline uses -45 dBFS and a 0.35 s minimum silence duration.
 
-Candidate cleanup now keeps Raw and Selected results separate. The current cleanup baseline applies a 20 s edge guard and groups candidates within 20 s, keeping the longest silence in each cluster. Selected candidates are drawn as solid orange lines while rejected raw candidates remain visible as dim dashed lines. A diagnostics table records each raw candidate time, silence duration, cleanup decision, and reason. Markers, playback, and export are not implemented yet.
+Candidate cleanup keeps Raw and Cleanup results separate. The current cleanup baseline applies a 20 s edge guard and groups candidates within 20 s, keeping the longest silence in each cluster.
+
+Boundary Refinement / Fallback adds a second advisory local stage. When a cleanup candidate creates an unusually short track followed by an unusually long remaining span relative to prior track spacing, the browser searches forward around the expected boundary. It first looks for the earliest qualified sustained energy transition; if none is found, it falls back to a local RMS energy valley. A qualified replacement becomes a Final candidate and is shown in pink, while the replaced cleanup position remains visible as a dashed orange reference. Raw rejected candidates remain dim dashed lines.
+
+Diagnostics are split into Cleanup and Refinement tables so every keep, reject, or fallback decision remains visible. Markers, playback, and export are not implemented yet.
