@@ -125,7 +125,7 @@ function renderWaveform() {
   const centerY = drawHeight / 2;
   const amplitude = Math.max(1, centerY - 12);
 
-  ctx.strokeStyle = "#202527";
+  ctx.strokeStyle = "#1b2529";
   ctx.lineWidth = 1;
   for (let i = 0; i <= 10; i += 1) {
     const x = Math.round((i / 10) * cssWidth) + 0.5;
@@ -135,14 +135,14 @@ function renderWaveform() {
     ctx.stroke();
   }
 
-  ctx.strokeStyle = "#394043";
+  ctx.strokeStyle = "#405159";
   ctx.beginPath();
   ctx.moveTo(0, centerY + 0.5);
   ctx.lineTo(cssWidth, centerY + 0.5);
   ctx.stroke();
 
   const { mins, maxs } = waveformPeaks;
-  ctx.strokeStyle = "#d0ad73";
+  ctx.strokeStyle = "#79d7f2";
   ctx.lineWidth = 1;
   ctx.beginPath();
 
